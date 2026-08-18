@@ -1,0 +1,55 @@
+services:
+  auth-service:
+    build: ./services/auth-service
+    environment:
+      - PORT=5001
+
+  dashboard-service:
+    build: ./services/dashboard-service
+    environment:
+      - PORT=5002
+      - DATABASE_URL=${DATABASE_URL}
+
+  project-service:
+    build: ./services/project-service
+    environment:
+      - PORT=5003
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+
+  profile-service:
+    build: ./services/profile-service
+    environment:
+      - PORT=5004
+      - DATABASE_URL=${DATABASE_URL}
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "5050:5050"
+    environment:
+      - PORT=5050
+      - AUTH_SERVICE_URL=http://auth-service:5001
+      - DASHBOARD_SERVICE_URL=http://dashboard-service:5002
+      - PROJECT_SERVICE_URL=http://project-service:5003
+      - PROFILE_SERVICE_URL=http://profile-service:5004
+    depends_on:
+      - auth-service
+      - dashboard-service
+      - project-service
+      - profile-service
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_SUPABASE_URL=${SUPABASE_URL}
+        - VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+        - VITE_AUTH_SERVICE_URL=http://localhost:5050/auth
+        - VITE_PROFILE_SERVICE_URL=http://localhost:5050/profile
+        - VITE_DASHBOARD_SERVICE_URL=http://localhost:5050/dashboard
+        - VITE_PROJECT_SERVICE_URL=http://localhost:5050/projects
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
