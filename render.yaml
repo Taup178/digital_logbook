@@ -1,11 +1,10 @@
 services:
-  - type: web
+  # Frontend - React/Vite static site
+  - type: static
     name: digital-logbook
-    env: static
-    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    staticPublishPath: frontend/dist
     routes:
       - type: rewrite
         source: /*
@@ -24,6 +23,7 @@ services:
       - key: VITE_PROJECT_SERVICE_URL
         sync: false
 
+  # Authentication service
   - type: web
     name: auth-service
     env: node
@@ -34,8 +34,8 @@ services:
     envVars:
       - key: PORT
         value: 5001
-      # Add other env vars as needed
 
+  # Dashboard service
   - type: web
     name: dashboard-service
     env: node
@@ -49,6 +49,7 @@ services:
       - key: DATABASE_URL
         sync: false
 
+  # Project service
   - type: web
     name: project-service
     env: node
@@ -64,6 +65,7 @@ services:
       - key: SUPABASE_URL
         sync: false
 
+  # API Gateway
   - type: web
     name: api-gateway
     env: node
@@ -83,6 +85,7 @@ services:
       - key: PROFILE_SERVICE_URL
         sync: false
 
+  # Profile service
   - type: web
     name: profile-service
     env: node
