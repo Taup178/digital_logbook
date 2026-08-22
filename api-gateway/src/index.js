@@ -6,22 +6,40 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 const app = express();
 const PORT = process.env.PORT || 5050;
 
-const allowedOrigins = [
+const defaultOrigins = [
   'https://digital-logbook-bxgv.onrender.com',
   'http://localhost:5173',
-  'http://localhost:3000'
+  'http://localhost:3000',
+  'http://localhost:4173',
+  'http://localhost:5050'
 ];
+
+const envOrigins = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (defaultOrigins.includes(origin) || envOrigins.includes(origin)) return true;
+  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return true;
+  if (/^https:\/\/[a-zA-Z0-9-]+\.onrender\.com$/.test(origin)) return true;
+  return false;
+};
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    console.warn(`CORS: Origin ${origin} not allowed`);
-    callback(null, false);
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS: Origin ${origin} not allowed`);
+      callback(null, false);
+    }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 };
 
 app.use(cors(corsOptions));
@@ -66,11 +84,11 @@ app.get('/', (req, res) => res.json({ service: 'api-gateway', status: 'ok' }));
 app.use((err, req, res, next) => {
   console.error('Unhandled gateway error:', err);
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
+  if (origin && isOriginAllowed(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
   }
-  res.status(500).json({ error: 'Internal server error', message: err?.message });
+  res.status(500).json({ error: 'Internal server error', message: err?.message || 'Unknown error' });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
