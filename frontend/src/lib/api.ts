@@ -12,8 +12,8 @@ export const PROFILE_URL =
   import.meta.env.VITE_PROFILE_SERVICE_URL ||
   "https://profile-service-0zk7.onrender.com";
 
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 1500;
+const RETRY_DELAYS = [2000, 3000, 5000, 7000, 10000, 12000];
+const MAX_RETRIES = RETRY_DELAYS.length;
 
 export async function request<T>(
   url: string,
@@ -44,32 +44,52 @@ export async function request<T>(
         },
       });
 
-      // If backend service is cold-starting, Render might return 502/503/504
-      if ([502, 503, 504].includes(res.status) && attempt < MAX_RETRIES) {
-        console.warn(
-          `[API] Received status ${res.status} from ${url}. Retrying in ${RETRY_DELAY_MS * (attempt + 1)}ms (service may be waking up)...`
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1))
-        );
-        continue;
+      // If backend service is cold-starting on Render free tier, status is 502/503/504
+      if ([502, 503, 504].includes(res.status)) {
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt];
+          console.warn(
+            `[API] Render service is waking up (status ${res.status}). Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        } else {
+          throw new Error(
+            "Service is waking up from idle on Render. Please wait a few moments and try again."
+          );
+        }
       }
 
       if (!res.ok) {
         const body = await res.text();
-        throw new Error(`API error ${res.status}: ${body}`);
+        // If the error response is raw HTML (e.g. 502/504 from Render proxy), return a clean message
+        if (body.includes("<!DOCTYPE") || body.includes("<html")) {
+          throw new Error(
+            `Service temporarily unavailable (${res.status}). It may be waking up. Please retry shortly.`
+          );
+        }
+        let parsedMessage = body;
+        try {
+          const json = JSON.parse(body);
+          parsedMessage = json.message || json.error || body;
+        } catch {
+          // keep body as string
+        }
+        throw new Error(parsedMessage);
       }
 
       return (await res.json()) as T;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt < MAX_RETRIES) {
+      // Retry on network errors / connection drops during cold-start
+      if (attempt < MAX_RETRIES && !lastError.message.includes("401") && !lastError.message.includes("400") && !lastError.message.includes("403")) {
+        const delay = RETRY_DELAYS[attempt];
         console.warn(
-          `[API] Request to ${url} failed (${lastError.message}). Retrying in ${RETRY_DELAY_MS * (attempt + 1)}ms...`
+          `[API] Request to ${url} failed (${lastError.message}). Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`
         );
-        await new Promise((resolve) =>
-          setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1))
-        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        break;
       }
     }
   }
